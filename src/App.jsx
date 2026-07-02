@@ -22,8 +22,7 @@ import {
   Moon,
   CheckCircle,
   XCircle,
-  Calendar,
-  Printer
+  Calendar
 } from "lucide-react";
 import { initialLeads, initialStudents, initialUsers, initialTeachers } from "./mockData";
 import { exportStudentsToExcel, exportTeacherScheduleToExcel, exportLeadsToExcel } from "./utils/excelHelper";
@@ -1126,9 +1125,9 @@ function App() {
                     className="btn btn-primary"
                     style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}
                     onClick={() => exportTeacherScheduleToPDF(activeTeacherObj, students, LESSON_HOURS, DAYS_OF_WEEK)}
-                    title="Ders programını A4 PDF olarak hazırla ve indir"
+                    title="Ders programını doğrudan PDF olarak indir"
                   >
-                    <Printer size={16} /> PDF / Yazdır
+                    <FileText size={16} /> PDF İndir
                   </button>
 
                   <button
