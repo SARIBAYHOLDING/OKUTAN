@@ -16,17 +16,19 @@ import {
   Clock,
   Send,
   AlertTriangle,
-  Shield,
   Info,
   LogOut,
   Sun,
   Moon,
   CheckCircle,
   XCircle,
-  Calendar
+  Calendar,
+  Printer
 } from "lucide-react";
 import { initialLeads, initialStudents, initialUsers, initialTeachers } from "./mockData";
-import { exportStudentsToExcel } from "./utils/excelHelper";
+import { exportStudentsToExcel, exportTeacherScheduleToExcel, exportLeadsToExcel } from "./utils/excelHelper";
+import { exportTeacherScheduleToPDF } from "./utils/pdfHelper";
+
 
 // ─── Sabitler ───────────────────────────────────────────────────────────────
 const DAYS_OF_WEEK = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
@@ -118,7 +120,22 @@ function App() {
   useEffect(() => { localStorage.setItem("okutan_students", JSON.stringify(students)); }, [students]);
   useEffect(() => { localStorage.setItem("okutan_teachers", JSON.stringify(teachers)); }, [teachers]);
 
+  // Öğretmen hesabı ile giriş yapıldığında otomatik kendi ders programını seç
+  useEffect(() => {
+    if (currentUser && currentUser.role === "Öğretmen") {
+      const matchedTeacher = teachers.find(t =>
+        t.name.toLowerCase().includes(currentUser.name.toLowerCase()) ||
+        currentUser.name.toLowerCase().includes(t.name.toLowerCase()) ||
+        t.id.includes(currentUser.username.toLowerCase())
+      );
+      if (matchedTeacher) {
+        setActiveTeacherScheduleId(matchedTeacher.id);
+      }
+    }
+  }, [currentUser, teachers]);
+
   // ── Theme ────────────────────────────────────────────────────────────────
+
   // Apply theme on mount and on change
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -827,10 +844,16 @@ function App() {
           <div className="panel-card">
             <div className="panel-header">
               <h3 className="panel-title"><Users size={22} color="var(--primary)" /> Görüşülen Müşteri Kayıt Sistemi</h3>
-              <button className="btn btn-primary" onClick={() => { setLeadForm(emptyLeadForm); setModal("addLead"); }}>
-                <Plus size={16} /> Yeni Görüşme Ekle
-              </button>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button className="btn btn-secondary" onClick={() => exportLeadsToExcel(leads)}>
+                  <FileSpreadsheet size={16} color="var(--success)" /> Excel Listesi
+                </button>
+                <button className="btn btn-primary" onClick={() => { setLeadForm(emptyLeadForm); setModal("addLead"); }}>
+                  <Plus size={16} /> Yeni Görüşme Ekle
+                </button>
+              </div>
             </div>
+
 
             <div className="toolbar">
               <div className="search-filter-group">
@@ -1077,76 +1100,126 @@ function App() {
         )}
 
         {/* ══ TEACHER SCHEDULES ════════════════════════════════════════════ */}
-        {activeTab === "teacher_schedules" && (
-          <div className="panel-card">
-            <div className="panel-header">
-              <h3 className="panel-title"><Calendar size={22} color="var(--primary)" /> Öğretmen Haftalık Ders Programları</h3>
-              <div className="schedule-tabs">
-                {teachers.map(t => (
+        {activeTab === "teacher_schedules" && (() => {
+          const activeTeacherObj = teachers.find(t => t.id === activeTeacherScheduleId) || teachers[0];
+          const activeTeacherStudents = students.filter(s => s.teacherId === activeTeacherScheduleId);
+          const totalSessionsCount = activeTeacherStudents.reduce((sum, s) => sum + (s.lessons ? s.lessons.length : 0), 0);
+
+          return (
+            <div className="panel-card">
+              <div className="panel-header" style={{ flexWrap: "wrap", gap: "12px" }}>
+                <h3 className="panel-title"><Calendar size={22} color="var(--primary)" /> Haftalık Öğretmen Ders Programları</h3>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <div className="schedule-tabs">
+                    {teachers.map(t => (
+                      <button
+                        key={t.id}
+                        className={`schedule-tab-btn ${activeTeacherScheduleId === t.id ? `active ${t.id === "teacher-zehra" ? "zehra" : ""}` : ""}`}
+                        onClick={() => setActiveTeacherScheduleId(t.id)}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+
                   <button
-                    key={t.id}
-                    className={`schedule-tab-btn ${activeTeacherScheduleId === t.id ? `active ${t.id === "teacher-zehra" ? "zehra" : ""}` : ""}`}
-                    onClick={() => setActiveTeacherScheduleId(t.id)}
+                    className="btn btn-primary"
+                    style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}
+                    onClick={() => exportTeacherScheduleToPDF(activeTeacherObj, students, LESSON_HOURS, DAYS_OF_WEEK)}
+                    title="Ders programını A4 PDF olarak hazırla ve indir"
                   >
-                    {t.name}
+                    <Printer size={16} /> PDF / Yazdır
                   </button>
-                ))}
+
+                  <button
+                    className="btn btn-secondary"
+                    style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}
+                    onClick={() => exportTeacherScheduleToExcel(activeTeacherObj, students, LESSON_HOURS, DAYS_OF_WEEK)}
+                    title="Ders programı tablosunu ve öğrenci listesini Excel olarak indir"
+                  >
+                    <FileSpreadsheet size={16} color="var(--success)" /> Excel İndir
+                  </button>
+                </div>
+              </div>
+
+              {/* Öğretmen İstatistik Özet Kartları */}
+              <div className="dashboard-grid" style={{ marginBottom: "1.25rem", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+                <div className="metric-card" style={{ padding: "1rem 1.25rem" }}>
+                  <div className="metric-info">
+                    <span className="metric-label">Aktif Öğretmen Programı</span>
+                    <span className="metric-value" style={{ fontSize: "1.25rem", color: activeTeacherObj.id === "teacher-zehra" ? "var(--success)" : "var(--primary)" }}>
+                      {activeTeacherObj.id === "teacher-zehra" ? "👩‍🏫" : "👨‍🏫"} {activeTeacherObj.name}
+                    </span>
+                  </div>
+                </div>
+                <div className="metric-card" style={{ padding: "1rem 1.25rem" }}>
+                  <div className="metric-info">
+                    <span className="metric-label">Atanan Öğrenci</span>
+                    <span className="metric-value" style={{ fontSize: "1.25rem" }}>{activeTeacherStudents.length} Kayıtlı Öğrenci</span>
+                  </div>
+                </div>
+                <div className="metric-card" style={{ padding: "1rem 1.25rem" }}>
+                  <div className="metric-info">
+                    <span className="metric-label">Haftalık Ders Yükü</span>
+                    <span className="metric-value" style={{ fontSize: "1.25rem", color: "var(--accent)" }}>{totalSessionsCount} Seans / Hafta</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="calendar-view-card">
+                <table className="calendar-table">
+                  <thead>
+                    <tr>
+                      <th className="time-header">Saat / Gün</th>
+                      {DAYS_OF_WEEK.map(day => (
+                        <th key={day}>{day}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {LESSON_HOURS.map(hour => (
+                      <tr key={hour}>
+                        <td className="time-header">{hour}</td>
+                        {DAYS_OF_WEEK.map(day => {
+                          const studentInSlot = students.find(s => 
+                            s.teacherId === activeTeacherScheduleId &&
+                            s.lessons &&
+                            s.lessons.some(l => l.day === day && l.time === hour)
+                          );
+                          return (
+                            <td key={day}>
+                              {studentInSlot ? (
+                                <div
+                                  className={`calendar-block ${studentInSlot.teacherId === "teacher-zehra" ? "zehra" : ""}`}
+                                  onClick={() => {
+                                    setSelectedStudent(studentInSlot);
+                                    setNewNoteText("");
+                                    setIsEditingSchedule(false);
+                                    setModal("studentDetail");
+                                  }}
+                                  title={`${studentInSlot.studentName} (${studentInSlot.studentAgeGrade})\nVeli: ${studentInSlot.name} - ${studentInSlot.phone}`}
+                                >
+                                  <span className="calendar-block-student">{studentInSlot.studentName}</span>
+                                  <span className="calendar-block-grade">{studentInSlot.studentAgeGrade}</span>
+                                  <span className="calendar-block-parent">Veli: {studentInSlot.name}</span>
+                                </div>
+                              ) : (
+                                <div className="calendar-block-empty">
+                                  —
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
+          );
+        })()}
 
-            <div className="calendar-view-card">
-              <table className="calendar-table">
-                <thead>
-                  <tr>
-                    <th className="time-header">Saat / Gün</th>
-                    {DAYS_OF_WEEK.map(day => (
-                      <th key={day}>{day}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {LESSON_HOURS.map(hour => (
-                    <tr key={hour}>
-                      <td className="time-header">{hour}</td>
-                      {DAYS_OF_WEEK.map(day => {
-                        // Bu öğretmen ve bu saat dilimindeki öğrenciyi bul
-                        const studentInSlot = students.find(s => 
-                          s.teacherId === activeTeacherScheduleId &&
-                          s.lessons &&
-                          s.lessons.some(l => l.day === day && l.time === hour)
-                        );
-                        return (
-                          <td key={day}>
-                            {studentInSlot ? (
-                              <div
-                                className={`calendar-block ${studentInSlot.teacherId === "teacher-zehra" ? "zehra" : ""}`}
-                                onClick={() => {
-                                  setSelectedStudent(studentInSlot);
-                                  setNewNoteText("");
-                                  setIsEditingSchedule(false);
-                                  setModal("studentDetail");
-                                }}
-                                title={`${studentInSlot.studentName} (${studentInSlot.studentAgeGrade})\nVeli: ${studentInSlot.name} - ${studentInSlot.phone}`}
-                              >
-                                <span className="calendar-block-student">{studentInSlot.studentName}</span>
-                                <span className="calendar-block-grade">{studentInSlot.studentAgeGrade}</span>
-                                <span className="calendar-block-parent">Veli: {studentInSlot.name}</span>
-                              </div>
-                            ) : (
-                              <div className="calendar-block-empty">
-                                —
-                              </div>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
       </main>
 
