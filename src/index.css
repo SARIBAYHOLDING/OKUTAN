@@ -1713,3 +1713,266 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Master Schedule Structure Configurator Styles */
+.structure-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: var(--bg-app);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.structure-item-row:hover {
+  border-color: var(--primary);
+  background-color: var(--bg-card);
+}
+
+.structure-item-idx {
+  font-weight: 800;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  width: 24px;
+}
+
+.structure-item-title {
+  flex-grow: 1;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-main);
+}
+
+.structure-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Admin Calendar Cell Interactions */
+.admin-clickable-cell {
+  cursor: pointer;
+  position: relative;
+}
+
+.admin-assignable {
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.admin-assignable:hover {
+  background-color: rgba(var(--primary-rgb), 0.08) !important;
+}
+
+.cell-quick-add-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  font-size: 0.7rem;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+}
+
+.admin-assignable:hover .cell-quick-add-badge {
+  opacity: 1;
+  color: var(--primary);
+  background-color: var(--primary-light);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+/* Quick Role Login Buttons */
+.quick-role-login-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.quick-role-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.quick-role-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.quick-role-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.quick-role-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.quick-role-btn.admin {
+  border-color: rgba(255, 118, 117, 0.4);
+  background-color: var(--accent-light);
+}
+
+.quick-role-btn.admin:hover {
+  border-color: var(--accent);
+}
+
+.quick-role-btn.assistant {
+  border-color: rgba(108, 92, 231, 0.4);
+  background-color: var(--primary-light);
+}
+
+.quick-role-btn.assistant:hover {
+  border-color: var(--primary);
+}
+
+.quick-role-btn.teacher {
+  border-color: rgba(0, 184, 148, 0.4);
+  background-color: var(--success-light);
+}
+
+.quick-role-btn.teacher:hover {
+  border-color: var(--success);
+}
+
+.quick-role-btn.teacher-zehra {
+  border-color: rgba(9, 132, 227, 0.4);
+  background-color: var(--info-light);
+}
+
+.quick-role-btn.teacher-zehra:hover {
+  border-color: var(--info);
+}
+
+.quick-role-icon {
+  font-size: 1.25rem;
+}
+
+.quick-role-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.quick-role-info strong {
+  font-size: 0.775rem;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+.quick-role-info span {
+  font-size: 0.675rem;
+  color: var(--text-muted);
+}
+
+/* 3-Role Portal Landing Hub Styles */
+.role-portal-grid {
+  display: grid;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.role-portal-card {
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  background-color: var(--bg-card);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  text-align: center;
+}
+
+.role-portal-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+
+.role-portal-card.admin:hover {
+  border-color: var(--accent);
+}
+
+.role-portal-card.assistant:hover {
+  border-color: var(--primary);
+}
+
+.role-portal-card.teacher:hover {
+  border-color: var(--success);
+}
+
+.role-portal-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 0.675rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+.role-portal-badge.admin {
+  background-color: var(--accent-light);
+  color: var(--accent);
+}
+
+.role-portal-badge.assistant {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.role-portal-badge.teacher {
+  background-color: var(--success-light);
+  color: var(--success);
+}
+
+.role-portal-icon {
+  font-size: 2.2rem;
+  margin-bottom: 2px;
+}
+
+.role-portal-card h3 {
+  font-size: 1.1rem;
+  font-weight: 750;
+  color: var(--text-main);
+}
+
+.role-portal-card p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.role-portal-btn {
+  width: 100%;
+  justify-content: center;
+  padding: 10px;
+  margin-top: 6px;
+  font-size: 0.85rem;
+}
+
+
+
+

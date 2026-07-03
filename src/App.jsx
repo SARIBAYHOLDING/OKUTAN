@@ -22,16 +22,24 @@ import {
   Moon,
   CheckCircle,
   XCircle,
-  Calendar
+  Calendar,
+  Settings,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw,
+  UserPlus,
+  Edit2,
+  X
 } from "lucide-react";
 import { initialLeads, initialStudents, initialUsers, initialTeachers } from "./mockData";
 import { exportStudentsToExcel, exportTeacherScheduleToExcel, exportLeadsToExcel } from "./utils/excelHelper";
 import { exportTeacherScheduleToPDF } from "./utils/pdfHelper";
 
 
-// ─── Sabitler ───────────────────────────────────────────────────────────────
-const DAYS_OF_WEEK = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
-const LESSON_HOURS = [
+// ─── Varsayılan Sabitler ───────────────────────────────────────────────────
+const LOGO_SRC = `${import.meta.env.BASE_URL || "/"}logo.png`;
+const DEFAULT_DAYS_OF_WEEK = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
+const DEFAULT_LESSON_HOURS = [
   "09:00 - 10:30",
   "10:30 - 12:00",
   "12:00 - 13:30",
@@ -41,7 +49,6 @@ const LESSON_HOURS = [
   "18:00 - 19:30"
 ];
 
-// ─── Sabitler ───────────────────────────────────────────────────────────────
 const ADMIN_REGISTER_PASSWORD = "Okutan.2026"; // Yeni kullanıcı açmak için yönetici şifresi
 
 // ─── Uygulama ────────────────────────────────────────────────────────────────
@@ -57,6 +64,7 @@ function App() {
     catch { return null; }
   });
   const [authView, setAuthView] = useState("login"); // "login" | "register"
+  const [selectedLoginRole, setSelectedLoginRole] = useState(null); // null | "Yönetici" | "Asistan" | "Öğretmen"
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [registerForm, setRegisterForm] = useState({
     name: "", username: "", password: "", role: "Asistan", adminCode: ""
@@ -105,6 +113,29 @@ function App() {
   const [editTeacherId, setEditTeacherId] = useState("");
   const [activeTeacherScheduleId, setActiveTeacherScheduleId] = useState("teacher-firat");
 
+  // DYNAMIC SCHEDULE STRUCTURE STATE
+  const [daysOfWeek, setDaysOfWeek] = useState(() => {
+    try { const s = localStorage.getItem("okutan_days_of_week"); return s ? JSON.parse(s) : DEFAULT_DAYS_OF_WEEK; }
+    catch { return DEFAULT_DAYS_OF_WEEK; }
+  });
+
+  const [lessonHours, setLessonHours] = useState(() => {
+    try { const s = localStorage.getItem("okutan_lesson_hours"); return s ? JSON.parse(s) : DEFAULT_LESSON_HOURS; }
+    catch { return DEFAULT_LESSON_HOURS; }
+  });
+
+  // MASTER SCHEDULE EDITING & CELL ACTION STATES
+  const [scheduleConfigTab, setScheduleConfigTab] = useState("hours"); // "hours" | "days"
+  const [newHourInput, setNewHourInput] = useState("");
+  const [newDayInput, setNewDayInput] = useState("");
+  const [editingHourIdx, setEditingHourIdx] = useState(null);
+  const [editingHourValue, setEditingHourValue] = useState("");
+  const [editingDayIdx, setEditingDayIdx] = useState(null);
+  const [editingDayValue, setEditingDayValue] = useState("");
+
+  const [activeSlotData, setActiveSlotData] = useState(null); // { day, hour, teacherId, student }
+  const [quickAssignStudentId, setQuickAssignStudentId] = useState("");
+
   // TOAST
   const [toast, setToast] = useState({ visible: false, message: "", type: "info" }); // type: info | success | error
 
@@ -118,6 +149,8 @@ function App() {
   useEffect(() => { localStorage.setItem("okutan_leads", JSON.stringify(leads)); }, [leads]);
   useEffect(() => { localStorage.setItem("okutan_students", JSON.stringify(students)); }, [students]);
   useEffect(() => { localStorage.setItem("okutan_teachers", JSON.stringify(teachers)); }, [teachers]);
+  useEffect(() => { localStorage.setItem("okutan_days_of_week", JSON.stringify(daysOfWeek)); }, [daysOfWeek]);
+  useEffect(() => { localStorage.setItem("okutan_lesson_hours", JSON.stringify(lessonHours)); }, [lessonHours]);
 
   // Öğretmen hesabı ile giriş yapıldığında otomatik kendi ders programını seç
   useEffect(() => {
@@ -245,6 +278,201 @@ function App() {
     if (!window.confirm("Bu potansiyel müşteriyi silmek istediğinizden emin misiniz?")) return;
     setLeads(prev => prev.filter(l => l.id !== id));
     showToast("Kayıt silindi.");
+  };
+
+  // ── Master Schedule Structure Handlers (Admin) ───────────────────────────
+  const handleAddHour = (e) => {
+    e.preventDefault();
+    const val = newHourInput.trim();
+    if (!val) {
+      showToast("Lütfen geçerli bir ders saat aralığı giriniz (Örn: 19:30 - 21:00).", "error"); return;
+    }
+    if (lessonHours.includes(val)) {
+      showToast("Bu ders saati zaten ekli!", "error"); return;
+    }
+    setLessonHours(prev => [...prev, val]);
+    setNewHourInput("");
+    showToast("Yeni ders saati eklendi.", "success");
+  };
+
+  const handleSaveEditedHour = (idx) => {
+    const val = editingHourValue.trim();
+    if (!val) { setEditingHourIdx(null); return; }
+    const oldHour = lessonHours[idx];
+    if (oldHour === val) { setEditingHourIdx(null); return; }
+
+    const updated = [...lessonHours];
+    updated[idx] = val;
+    setLessonHours(updated);
+
+    // Update students using oldHour
+    setStudents(prev => prev.map(s => {
+      if (!s.lessons || s.lessons.length === 0) return s;
+      const updatedLessons = s.lessons.map(l => l.time === oldHour ? { ...l, time: val } : l);
+      return { ...s, lessons: updatedLessons };
+    }));
+
+    setEditingHourIdx(null);
+    showToast("Ders saati güncellendi.", "success");
+  };
+
+  const handleDeleteHour = (idx) => {
+    const hourToDelete = lessonHours[idx];
+    const assigned = students.filter(s => s.lessons && s.lessons.some(l => l.time === hourToDelete));
+    if (assigned.length > 0) {
+      if (!window.confirm(`Uyarı: ${hourToDelete} saatine kayıtlı ${assigned.length} öğrenci dersi var. Silmek istediğinizden emin misiniz?`)) {
+        return;
+      }
+    }
+    setLessonHours(prev => prev.filter((_, i) => i !== idx));
+    showToast("Ders saati silindi.");
+  };
+
+  const handleMoveHour = (idx, direction) => {
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= lessonHours.length) return;
+    const updated = [...lessonHours];
+    const temp = updated[idx];
+    updated[idx] = updated[targetIdx];
+    updated[targetIdx] = temp;
+    setLessonHours(updated);
+  };
+
+  const handleAddDay = (e) => {
+    e.preventDefault();
+    const val = newDayInput.trim();
+    if (!val) {
+      showToast("Lütfen geçerli bir gün adı giriniz.", "error"); return;
+    }
+    if (daysOfWeek.includes(val)) {
+      showToast("Bu gün zaten listede var!", "error"); return;
+    }
+    setDaysOfWeek(prev => [...prev, val]);
+    setNewDayInput("");
+    showToast("Yeni gün eklendi.", "success");
+  };
+
+  const handleSaveEditedDay = (idx) => {
+    const val = editingDayValue.trim();
+    if (!val) { setEditingDayIdx(null); return; }
+    const oldDay = daysOfWeek[idx];
+    if (oldDay === val) { setEditingDayIdx(null); return; }
+
+    const updated = [...daysOfWeek];
+    updated[idx] = val;
+    setDaysOfWeek(updated);
+
+    setStudents(prev => prev.map(s => {
+      if (!s.lessons || s.lessons.length === 0) return s;
+      const updatedLessons = s.lessons.map(l => l.day === oldDay ? { ...l, day: val } : l);
+      return { ...s, lessons: updatedLessons };
+    }));
+
+    setEditingDayIdx(null);
+    showToast("Gün adı güncellendi.", "success");
+  };
+
+  const handleDeleteDay = (idx) => {
+    const dayToDelete = daysOfWeek[idx];
+    const assigned = students.filter(s => s.lessons && s.lessons.some(l => l.day === dayToDelete));
+    if (assigned.length > 0) {
+      if (!window.confirm(`Uyarı: ${dayToDelete} gününe kayıtlı ${assigned.length} öğrenci var. Yine de silmek istiyor musunuz?`)) {
+        return;
+      }
+    }
+    setDaysOfWeek(prev => prev.filter((_, i) => i !== idx));
+    showToast("Gün silindi.");
+  };
+
+  const handleMoveDay = (idx, direction) => {
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= daysOfWeek.length) return;
+    const updated = [...daysOfWeek];
+    const temp = updated[idx];
+    updated[idx] = updated[targetIdx];
+    updated[targetIdx] = temp;
+    setDaysOfWeek(updated);
+  };
+
+  const handleResetScheduleStructure = () => {
+    if (!window.confirm("Ders saatlerini ve günleri varsayılan ayarlara sıfırlamak istediğinizden emin misiniz?")) return;
+    setDaysOfWeek(DEFAULT_DAYS_OF_WEEK);
+    setLessonHours(DEFAULT_LESSON_HOURS);
+    showToast("Ders ve gün yapısı varsayılana sıfırlandı.", "success");
+  };
+
+  // ── Quick Slot Actions (Admin Direct Calendar Cell Editing) ──────────────
+  const handleQuickAssignStudent = (e) => {
+    e.preventDefault();
+    if (!activeSlotData || !quickAssignStudentId) {
+      showToast("Lütfen bir öğrenci seçiniz.", "error"); return;
+    }
+    const { day, hour, teacherId } = activeSlotData;
+    const targetTeacher = teachers.find(t => t.id === teacherId) || teachers[0];
+    const targetStudent = students.find(s => s.id === quickAssignStudentId);
+    if (!targetStudent) return;
+
+    const existingLessons = targetStudent.lessons || [];
+    const isAlreadyInSlot = existingLessons.some(l => l.day === day && l.time === hour);
+    const newLessons = isAlreadyInSlot ? existingLessons : [...existingLessons, { day, time: hour }];
+
+    const updatedStudents = students.map(s => {
+      if (s.id === targetStudent.id) {
+        return {
+          ...s,
+          teacherId: teacherId,
+          teacherName: targetTeacher.name,
+          lessons: newLessons,
+          notes: [
+            {
+              id: `n-${Date.now()}`,
+              date: new Date().toISOString().split("T")[0],
+              author: `${currentUser.name} (${currentUser.role})`,
+              content: `Takvimden seans atandı: ${targetTeacher.name} — ${day} (${hour.split(" ")[0]})`
+            },
+            ...s.notes
+          ]
+        };
+      }
+      return s;
+    });
+
+    setStudents(updatedStudents);
+    setModal(null);
+    setActiveSlotData(null);
+    setQuickAssignStudentId("");
+    showToast(`${targetStudent.studentName}, ${targetTeacher.name} - ${day} ${hour.split(" ")[0]} seansına atandı.`, "success");
+  };
+
+  const handleQuickRemoveStudentFromSlot = () => {
+    if (!activeSlotData || !activeSlotData.student) return;
+    const { day, hour, student } = activeSlotData;
+    if (!window.confirm(`${student.studentName} öğrencisini bu seanstan (${day} ${hour}) çıkarmak istediğinizden emin misiniz?`)) return;
+
+    const updatedStudents = students.map(s => {
+      if (s.id === student.id) {
+        const filtered = (s.lessons || []).filter(l => !(l.day === day && l.time === hour));
+        return {
+          ...s,
+          lessons: filtered,
+          notes: [
+            {
+              id: `n-${Date.now()}`,
+              date: new Date().toISOString().split("T")[0],
+              author: `${currentUser.name} (${currentUser.role})`,
+              content: `Takvimden seans çıkarıldı: ${day} (${hour.split(" ")[0]})`
+            },
+            ...s.notes
+          ]
+        };
+      }
+      return s;
+    });
+
+    setStudents(updatedStudents);
+    setModal(null);
+    setActiveSlotData(null);
+    showToast(`${student.studentName} bu seanstan çıkarıldı.`);
   };
 
   // ── Scheduling Helpers ───────────────────────────────────────────────────
@@ -502,55 +730,147 @@ function App() {
         )}
 
         {authView === "login" ? (
-          <div className="auth-card">
-            <div className="auth-header">
-              <img src="/logo.png" className="auth-logo-img" alt="Okutan Akademi Logo" />
-              <h2>Sisteme Giriş</h2>
-              <p>Okutan Akademi takip sistemine hoş geldiniz.</p>
+          selectedLoginRole === null ? (
+            /* Rol Seçim Portalı Hub */
+            <div className="auth-card" style={{ maxWidth: 540, textAlign: "center" }}>
+              <div className="auth-header">
+                <img src={LOGO_SRC} className="auth-logo-img" alt="Okutan Akademi Logo" />
+                <h2>Giriş Türünü Seçiniz</h2>
+                <p>Okutan Akademi takip sistemine giriş yapmak istediğiniz portalı seçin:</p>
+              </div>
+
+              <div className="role-portal-grid">
+                {/* 1. Yönetici Giriş Kartı */}
+                <div
+                  className="role-portal-card admin"
+                  onClick={() => {
+                    setSelectedLoginRole("Yönetici");
+                    setLoginForm({ username: "", password: "" });
+                  }}
+                >
+                  <div className="role-portal-badge admin">Yönetim Portal</div>
+                  <div className="role-portal-icon">👑</div>
+                  <h3>Yönetici Girişi</h3>
+                  <p>Kasa, kayıtlar, öğretmen programları ve tüm sistem yetkileri</p>
+                  <button type="button" className="btn btn-accent role-portal-btn">
+                    Yönetici Portalı →
+                  </button>
+                </div>
+
+                {/* 2. Asistan Giriş Kartı */}
+                <div
+                  className="role-portal-card assistant"
+                  onClick={() => {
+                    setSelectedLoginRole("Asistan");
+                    setLoginForm({ username: "", password: "" });
+                  }}
+                >
+                  <div className="role-portal-badge assistant">Asistan Portal</div>
+                  <div className="role-portal-icon">👩‍💼</div>
+                  <h3>Asistan Girişi</h3>
+                  <p>Görüşülen müşteriler, kesin kayıtlar ve ödeme takibi</p>
+                  <button type="button" className="btn btn-primary role-portal-btn">
+                    Asistan Portalı →
+                  </button>
+                </div>
+
+                {/* 3. Öğretmen Giriş Kartı */}
+                <div
+                  className="role-portal-card teacher"
+                  onClick={() => {
+                    setSelectedLoginRole("Öğretmen");
+                    setLoginForm({ username: "", password: "" });
+                  }}
+                >
+                  <div className="role-portal-badge teacher">Öğretmen Portal</div>
+                  <div className="role-portal-icon">👨‍🏫</div>
+                  <h3>Öğretmen Girişi</h3>
+                  <p>Haftalık ders programı çizelgesi, PDF indirme ve gelişim notları</p>
+                  <button type="button" className="btn btn-secondary role-portal-btn">
+                    Öğretmen Portalı →
+                  </button>
+                </div>
+              </div>
+
+              <p className="auth-switch-text" style={{ marginTop: "1.25rem" }}>
+                Yeni bir hesap mı açmak istiyorsunuz?
+                <span onClick={() => { setAuthView("register"); setRegisterForm({ name: "", username: "", password: "", role: "Asistan", adminCode: "" }); }}>
+                  Yeni Hesap Oluştur
+                </span>
+              </p>
             </div>
-
-            <form onSubmit={handleLogin} className="auth-form">
-              <div className="form-group">
-                <label>Kullanıcı Adı</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="Kullanıcı adınız"
-                  value={loginForm.username}
-                  onChange={e => setLoginForm(f => ({ ...f, username: e.target.value }))}
-                  autoComplete="username"
-                  required
-                />
+          ) : (
+            /* Özel Rol Giriş Ekranı */
+            <div className="auth-card" style={{ maxWidth: 440 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: "6px 12px", fontSize: "0.775rem", gap: 4 }}
+                  onClick={() => { setSelectedLoginRole(null); setLoginForm({ username: "", password: "" }); }}
+                >
+                  ← Rol Seçimine Dön
+                </button>
+                <span className={`role-badge-pill ${selectedLoginRole === "Yönetici" ? "admin" : selectedLoginRole === "Asistan" ? "assistant" : "teacher"}`}>
+                  {selectedLoginRole} Portalı
+                </span>
               </div>
-              <div className="form-group">
-                <label>Şifre</label>
-                <input
-                  type="password"
-                  className="form-control"
-                  placeholder="Şifreniz"
-                  value={loginForm.password}
-                  onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
-                  autoComplete="current-password"
-                  required
-                />
-              </div>
-              <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center", padding: "13px" }}>
-                Giriş Yap
-              </button>
-            </form>
 
-            <p className="auth-switch-text">
-              Yeni hesap mı açmak istiyorsunuz?
-              <span onClick={() => { setAuthView("register"); setRegisterForm({ name: "", username: "", password: "", role: "Asistan", adminCode: "" }); }}>
-                Hesap Oluştur
-              </span>
-            </p>
-          </div>
+              <div className="auth-header">
+                <img src={LOGO_SRC} className="auth-logo-img" alt="Okutan Akademi Logo" />
+                <h2>
+                  {selectedLoginRole === "Yönetici" && "👑 Yönetici Girişi"}
+                  {selectedLoginRole === "Asistan" && "👩‍💼 Asistan Girişi"}
+                  {selectedLoginRole === "Öğretmen" && "👨‍🏫 Öğretmen Girişi"}
+                </h2>
+                <p>Okutan Akademi {selectedLoginRole} portalına hoş geldiniz.</p>
+              </div>
+
+              <form onSubmit={handleLogin} className="auth-form">
+                <div className="form-group">
+                  <label>Kullanıcı Adı</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Kullanıcı adınızı giriniz"
+                    value={loginForm.username}
+                    onChange={e => setLoginForm(f => ({ ...f, username: e.target.value }))}
+                    autoComplete="username"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Şifre</label>
+                  <input
+                    type="password"
+                    className="form-control"
+                    placeholder="Şifrenizi giriniz"
+                    value={loginForm.password}
+                    onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className={`btn ${selectedLoginRole === "Yönetici" ? "btn-accent" : selectedLoginRole === "Asistan" ? "btn-primary" : "btn-secondary"}`}
+                  style={{ width: "100%", justifyContent: "center", padding: "13px" }}
+                >
+                  Giriş Yap
+                </button>
+              </form>
+
+              <p className="auth-switch-text">
+                Farklı bir portal mı?
+                <span onClick={() => { setSelectedLoginRole(null); setLoginForm({ username: "", password: "", }); }}>Rol Seçimine Dön</span>
+              </p>
+            </div>
+          )
 
         ) : (
           <div className="auth-card">
             <div className="auth-header">
-              <img src="/logo.png" className="auth-logo-img" alt="Okutan Akademi Logo" />
+              <img src={LOGO_SRC} className="auth-logo-img" alt="Okutan Akademi Logo" />
               <h2>Yeni Kullanıcı Ekle</h2>
               <p>Yeni hesap açmak için yönetici şifresi gereklidir.</p>
             </div>
@@ -648,7 +968,7 @@ function App() {
       <aside className="sidebar">
         <div>
           <div className="sidebar-logo-container">
-            <img src="/logo.png" className="sidebar-logo-img" alt="Okutan Akademi" />
+            <img src={LOGO_SRC} className="sidebar-logo-img" alt="Okutan Akademi" />
           </div>
 
           <ul className="menu-list">
@@ -1121,10 +1441,24 @@ function App() {
                     ))}
                   </div>
 
+                  {role === "Yönetici" && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}
+                      onClick={() => {
+                        setScheduleConfigTab("hours");
+                        setModal("manageScheduleStructure");
+                      }}
+                      title="Ders saatlerini ve günleri baştan aşağı düzenle"
+                    >
+                      <Settings size={16} color="var(--primary)" /> Saat / Gün Yapısını Düzenle
+                    </button>
+                  )}
+
                   <button
                     className="btn btn-primary"
                     style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}
-                    onClick={() => exportTeacherScheduleToPDF(activeTeacherObj, students, LESSON_HOURS, DAYS_OF_WEEK)}
+                    onClick={() => exportTeacherScheduleToPDF(activeTeacherObj, students, lessonHours, daysOfWeek)}
                     title="Ders programını doğrudan PDF olarak indir"
                   >
                     <FileText size={16} /> PDF İndir
@@ -1133,7 +1467,7 @@ function App() {
                   <button
                     className="btn btn-secondary"
                     style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}
-                    onClick={() => exportTeacherScheduleToExcel(activeTeacherObj, students, LESSON_HOURS, DAYS_OF_WEEK)}
+                    onClick={() => exportTeacherScheduleToExcel(activeTeacherObj, students, lessonHours, daysOfWeek)}
                     title="Ders programı tablosunu ve öğrenci listesini Excel olarak indir"
                   >
                     <FileSpreadsheet size={16} color="var(--success)" /> Excel İndir
@@ -1170,41 +1504,69 @@ function App() {
                   <thead>
                     <tr>
                       <th className="time-header">Saat / Gün</th>
-                      {DAYS_OF_WEEK.map(day => (
+                      {daysOfWeek.map(day => (
                         <th key={day}>{day}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {LESSON_HOURS.map(hour => (
+                    {lessonHours.map(hour => (
                       <tr key={hour}>
                         <td className="time-header">{hour}</td>
-                        {DAYS_OF_WEEK.map(day => {
+                        {daysOfWeek.map(day => {
                           const studentInSlot = students.find(s => 
                             s.teacherId === activeTeacherScheduleId &&
                             s.lessons &&
                             s.lessons.some(l => l.day === day && l.time === hour)
                           );
+                          const isAdmin = role === "Yönetici";
+
                           return (
-                            <td key={day}>
+                            <td key={day} className={isAdmin ? "admin-clickable-cell" : ""}>
                               {studentInSlot ? (
                                 <div
                                   className={`calendar-block ${studentInSlot.teacherId === "teacher-zehra" ? "zehra" : ""}`}
                                   onClick={() => {
-                                    setSelectedStudent(studentInSlot);
-                                    setNewNoteText("");
-                                    setIsEditingSchedule(false);
-                                    setModal("studentDetail");
+                                    if (isAdmin) {
+                                      setActiveSlotData({
+                                        day,
+                                        hour,
+                                        teacherId: activeTeacherScheduleId,
+                                        student: studentInSlot
+                                      });
+                                      setQuickAssignStudentId("");
+                                      setModal("quickSlotAction");
+                                    } else {
+                                      setSelectedStudent(studentInSlot);
+                                      setNewNoteText("");
+                                      setIsEditingSchedule(false);
+                                      setModal("studentDetail");
+                                    }
                                   }}
-                                  title={`${studentInSlot.studentName} (${studentInSlot.studentAgeGrade})\nVeli: ${studentInSlot.name} - ${studentInSlot.phone}`}
+                                  title={`${studentInSlot.studentName} (${studentInSlot.studentAgeGrade})\nVeli: ${studentInSlot.name} - ${studentInSlot.phone}${isAdmin ? "\n(Yönetici Hücre İşlemleri İçin Tıklayın)" : ""}`}
                                 >
                                   <span className="calendar-block-student">{studentInSlot.studentName}</span>
                                   <span className="calendar-block-grade">{studentInSlot.studentAgeGrade}</span>
                                   <span className="calendar-block-parent">Veli: {studentInSlot.name}</span>
                                 </div>
                               ) : (
-                                <div className="calendar-block-empty">
-                                  —
+                                <div
+                                  className={`calendar-block-empty ${isAdmin ? "admin-assignable" : ""}`}
+                                  onClick={() => {
+                                    if (isAdmin) {
+                                      setActiveSlotData({
+                                        day,
+                                        hour,
+                                        teacherId: activeTeacherScheduleId,
+                                        student: null
+                                      });
+                                      setQuickAssignStudentId("");
+                                      setModal("quickSlotAction");
+                                    }
+                                  }}
+                                  title={isAdmin ? `${day} ${hour} seansına öğrenci atamak için tıklayın` : ""}
+                                >
+                                  {isAdmin ? <span className="cell-quick-add-badge"><Plus size={12} /> Ekle</span> : "—"}
                                 </div>
                               )}
                             </td>
@@ -1385,16 +1747,16 @@ function App() {
                       <thead>
                         <tr>
                           <th className="schedule-time-col">Saat / Gün</th>
-                          {DAYS_OF_WEEK.map(d => (
+                          {daysOfWeek.map(d => (
                             <th key={d}>{d.substring(0, 3)}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {LESSON_HOURS.map(hour => (
+                        {lessonHours.map(hour => (
                           <tr key={hour}>
                             <td className="schedule-time-col">{hour.split(" ")[0]}</td>
-                            {DAYS_OF_WEEK.map(day => {
+                            {daysOfWeek.map(day => {
                               const isSelected = confirmLessons.some(l => l.day === day && l.time === hour);
                               
                               // Hücredeki doluluk durumları (Kimlerin çakışması var?)
@@ -1575,16 +1937,16 @@ function App() {
                       <thead>
                         <tr>
                           <th className="schedule-time-col">Saat / Gün</th>
-                          {DAYS_OF_WEEK.map(d => (
+                          {daysOfWeek.map(d => (
                             <th key={d}>{d.substring(0, 3)}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {LESSON_HOURS.map(hour => (
+                        {lessonHours.map(hour => (
                           <tr key={hour}>
                             <td className="schedule-time-col">{hour.split(" ")[0]}</td>
-                            {DAYS_OF_WEEK.map(day => {
+                            {daysOfWeek.map(day => {
                               const isSelected = editLessons.some(l => l.day === day && l.time === hour);
                               
                               // Diğer öğrenciler için çakışma durumları (aktif öğrenci hariç!)
@@ -1896,6 +2258,377 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Manage Schedule Structure Modal (Admin Only) */}
+      {modal === "manageScheduleStructure" && role === "Yönetici" && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
+          <div className="modal-content" style={{ maxWidth: 680 }}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Settings size={20} color="var(--primary)" /> Saat / Gün Yapısını Düzenle
+                </h3>
+                <p style={{ fontSize: "0.775rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                  Öğretmen haftalık ders çizelgesindeki Saat aralıklarını ve Günleri ekleyin, düzenleyin veya yeniden sıralayın.
+                </p>
+              </div>
+              <button className="btn-icon-only" onClick={() => setModal(null)}>✕</button>
+            </div>
+
+            <div className="modal-body">
+              {/* Tab Selector */}
+              <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--border)", paddingBottom: "12px" }}>
+                <button
+                  type="button"
+                  className={`btn ${scheduleConfigTab === "hours" ? "btn-primary" : "btn-secondary"}`}
+                  style={{ padding: "6px 14px", fontSize: "0.85rem" }}
+                  onClick={() => setScheduleConfigTab("hours")}
+                >
+                  ⏰ Ders Saatleri ({lessonHours.length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${scheduleConfigTab === "days" ? "btn-primary" : "btn-secondary"}`}
+                  style={{ padding: "6px 14px", fontSize: "0.85rem" }}
+                  onClick={() => setScheduleConfigTab("days")}
+                >
+                  📅 Günler ({daysOfWeek.length})
+                </button>
+              </div>
+
+              {scheduleConfigTab === "hours" ? (
+                <div>
+                  {/* Add New Hour Form */}
+                  <form onSubmit={handleAddHour} style={{ display: "flex", gap: "8px", marginBottom: "1rem" }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Yeni Ders Saati (Örn: 19:30 - 21:00)"
+                      value={newHourInput}
+                      onChange={e => setNewHourInput(e.target.value)}
+                      style={{ flexGrow: 1 }}
+                    />
+                    <button type="submit" className="btn btn-accent" style={{ padding: "8px 16px", whiteSpace: "nowrap" }}>
+                      <Plus size={16} /> Saat Ekle
+                    </button>
+                  </form>
+
+                  {/* List of Lesson Hours */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: 320, overflowY: "auto" }}>
+                    {lessonHours.map((hour, idx) => (
+                      <div key={idx} className="structure-item-row">
+                        <span className="structure-item-idx">#{idx + 1}</span>
+                        {editingHourIdx === idx ? (
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={editingHourValue}
+                            onChange={e => setEditingHourValue(e.target.value)}
+                            onBlur={() => handleSaveEditedHour(idx)}
+                            onKeyDown={e => e.key === "Enter" && handleSaveEditedHour(idx)}
+                            autoFocus
+                            style={{ padding: "4px 8px", fontSize: "0.85rem" }}
+                          />
+                        ) : (
+                          <span className="structure-item-title">{hour}</span>
+                        )}
+
+                        <div className="structure-item-actions">
+                          <button
+                            type="button"
+                            className="btn-icon-only"
+                            title="Yukarı Taşı"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveHour(idx, "up")}
+                            style={{ width: 30, height: 30 }}
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-icon-only"
+                            title="Aşağı Taşı"
+                            disabled={idx === lessonHours.length - 1}
+                            onClick={() => handleMoveHour(idx, "down")}
+                            style={{ width: 30, height: 30 }}
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                          {editingHourIdx === idx ? (
+                            <button
+                              type="button"
+                              className="btn-icon-only"
+                              title="Kaydet"
+                              onClick={() => handleSaveEditedHour(idx)}
+                              style={{ width: 30, height: 30, color: "var(--success)" }}
+                            >
+                              <CheckCircle size={14} />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-icon-only"
+                              title="Düzenle"
+                              onClick={() => { setEditingHourIdx(idx); setEditingHourValue(hour); }}
+                              style={{ width: 30, height: 30 }}
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn-icon-only delete-btn"
+                            title="Sil"
+                            onClick={() => handleDeleteHour(idx)}
+                            style={{ width: 30, height: 30 }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {/* Add New Day Form */}
+                  <form onSubmit={handleAddDay} style={{ display: "flex", gap: "8px", marginBottom: "1rem" }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Yeni Gün Adı (Örn: Cumartesi Ek Grup)"
+                      value={newDayInput}
+                      onChange={e => setNewDayInput(e.target.value)}
+                      style={{ flexGrow: 1 }}
+                    />
+                    <button type="submit" className="btn btn-accent" style={{ padding: "8px 16px", whiteSpace: "nowrap" }}>
+                      <Plus size={16} /> Gün Ekle
+                    </button>
+                  </form>
+
+                  {/* List of Days */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: 320, overflowY: "auto" }}>
+                    {daysOfWeek.map((day, idx) => (
+                      <div key={idx} className="structure-item-row">
+                        <span className="structure-item-idx">#{idx + 1}</span>
+                        {editingDayIdx === idx ? (
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={editingDayValue}
+                            onChange={e => setEditingDayValue(e.target.value)}
+                            onBlur={() => handleSaveEditedDay(idx)}
+                            onKeyDown={e => e.key === "Enter" && handleSaveEditedDay(idx)}
+                            autoFocus
+                            style={{ padding: "4px 8px", fontSize: "0.85rem" }}
+                          />
+                        ) : (
+                          <span className="structure-item-title">{day}</span>
+                        )}
+
+                        <div className="structure-item-actions">
+                          <button
+                            type="button"
+                            className="btn-icon-only"
+                            title="Yukarı Taşı"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveDay(idx, "up")}
+                            style={{ width: 30, height: 30 }}
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-icon-only"
+                            title="Aşağı Taşı"
+                            disabled={idx === daysOfWeek.length - 1}
+                            onClick={() => handleMoveDay(idx, "down")}
+                            style={{ width: 30, height: 30 }}
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                          {editingDayIdx === idx ? (
+                            <button
+                              type="button"
+                              className="btn-icon-only"
+                              title="Kaydet"
+                              onClick={() => handleSaveEditedDay(idx)}
+                              style={{ width: 30, height: 30, color: "var(--success)" }}
+                            >
+                              <CheckCircle size={14} />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-icon-only"
+                              title="Düzenle"
+                              onClick={() => { setEditingDayIdx(idx); setEditingDayValue(day); }}
+                              style={{ width: 30, height: 30 }}
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn-icon-only delete-btn"
+                            title="Sil"
+                            onClick={() => handleDeleteDay(idx)}
+                            style={{ width: 30, height: 30 }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ justifyContent: "space-between" }}>
+              <button type="button" className="btn btn-secondary" onClick={handleResetScheduleStructure} title="Varsayılan ayarlara dön">
+                <RotateCcw size={14} /> Varsayılana Sıfırla
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => setModal(null)}>
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Slot Action Modal (Admin Direct Calendar Cell Click) */}
+      {modal === "quickSlotAction" && activeSlotData && role === "Yönetici" && (() => {
+        const activeTeacher = teachers.find(t => t.id === activeSlotData.teacherId) || teachers[0];
+        const occupiedStudent = activeSlotData.student;
+
+        return (
+          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && (setModal(null) || setActiveSlotData(null))}>
+            <div className="modal-content" style={{ maxWidth: 540 }}>
+              <div className="modal-header">
+                <div>
+                  <h3 style={{ fontSize: "1.1rem" }}>Hücre Düzenle — {activeSlotData.day} ({activeSlotData.hour.split(" ")[0]})</h3>
+                  <p style={{ fontSize: "0.775rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                    Öğretmen: <strong>{activeTeacher.name}</strong>
+                  </p>
+                </div>
+                <button className="btn-icon-only" onClick={() => { setModal(null); setActiveSlotData(null); }}>✕</button>
+              </div>
+
+              <div className="modal-body" style={{ gap: "1.25rem" }}>
+                {occupiedStudent ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    <div style={{
+                      background: occupiedStudent.teacherId === "teacher-zehra" ? "var(--accent-light)" : "var(--primary-light)",
+                      borderLeft: `4px solid ${occupiedStudent.teacherId === "teacher-zehra" ? "var(--accent)" : "var(--primary)"}`,
+                      padding: "12px 14px",
+                      borderRadius: "var(--radius-md)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <div>
+                        <h4 style={{ fontSize: "0.95rem", color: occupiedStudent.teacherId === "teacher-zehra" ? "var(--accent)" : "var(--primary)" }}>
+                          👨‍🎓 {occupiedStudent.studentName}
+                        </h4>
+                        <p style={{ fontSize: "0.775rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                          {occupiedStudent.studentAgeGrade} | Veli: {occupiedStudent.name} ({occupiedStudent.phone})
+                        </p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ justifyContent: "center" }}
+                        onClick={() => {
+                          setSelectedStudent(occupiedStudent);
+                          setNewNoteText("");
+                          setIsEditingSchedule(false);
+                          setModal("studentDetail");
+                        }}
+                      >
+                        <FileText size={15} /> Öğrenci Detayını & Notlarını Gör
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn btn-accent"
+                        style={{ justifyContent: "center" }}
+                        onClick={handleQuickRemoveStudentFromSlot}
+                      >
+                        <Trash2 size={15} /> Bu Seansı Kaldır (Öğrenciyi Saatten Çıkar)
+                      </button>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", marginTop: "4px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: "6px", display: "block" }}>
+                        🔄 Farklı Bir Öğrenci İle Değiştir / Ek Kayıt:
+                      </label>
+                      <form onSubmit={handleQuickAssignStudent} style={{ display: "flex", gap: "8px" }}>
+                        <select
+                          className="form-control"
+                          value={quickAssignStudentId}
+                          onChange={e => setQuickAssignStudentId(e.target.value)}
+                          required
+                          style={{ flexGrow: 1, fontSize: "0.85rem" }}
+                        >
+                          <option value="">Değiştirilecek Öğrenciyi Seçin…</option>
+                          {students.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.studentName} ({s.studentAgeGrade}) — Veli: {s.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button type="submit" className="btn btn-secondary" style={{ whiteSpace: "nowrap" }}>
+                          Ata
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ background: "var(--bg-app)", padding: "12px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", marginBottom: "1rem" }}>
+                      <p style={{ fontSize: "0.85rem", color: "var(--text-main)" }}>
+                        Bu ders saati şu an <strong>BOŞ</strong>. {activeTeacher.name} için bu saat dilimine doğrudan öğrenci atayabilirsiniz.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleQuickAssignStudent} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                      <div className="form-group">
+                        <label>Öğrenci Seçimi *</label>
+                        <select
+                          className="form-control"
+                          value={quickAssignStudentId}
+                          onChange={e => setQuickAssignStudentId(e.target.value)}
+                          required
+                        >
+                          <option value="">Kayıtlı öğrencilerden birini seçin…</option>
+                          {students.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.studentName} ({s.studentAgeGrade}) — Veli: {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button type="submit" className="btn btn-accent" style={{ justifyContent: "center", padding: "12px" }}>
+                        <UserPlus size={16} /> Öğrenciyi Seansa Ata
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => { setModal(null); setActiveSlotData(null); }}>
+                  Kapat
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Suda Dynamics Filigranı */}
       <div className="suda-dynamics-watermark">
